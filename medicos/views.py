@@ -1,9 +1,10 @@
 from django.shortcuts import render, redirect
-from .models import Especialidades, DadosMedico, is_medico
+from .models import Especialidades, DadosMedico, is_medico, DatasAbertas
 from django.http import HttpResponse
 from django.contrib import messages
 from django.contrib.messages import constants
-
+from datetime import datetime, timedelta
+from pacientes.models import consulta
 
 # Create your views here.
 
@@ -55,4 +56,43 @@ def cadastro_medico(request):
         messages.add_message(request, constants.SUCCESS, "Cadastro medico realizado com sucesso")
         return redirect('/medicos/abrir_horario')
 
+def abrir_horario(request):
 
+    if not is_medico(request.user):
+        messages.add_message(request, constants.WARNING, 'Somente medicos podem abrir horários')
+        return redirect('/usuarios/sair')
+    
+    if request.method == 'GET':
+        dados_medicos = DadosMedico.objects.get(user=request.user)
+        datas_abertas = DatasAbertas.objects.filter(user=request.user)
+        return render(request, 'abrir_horario.html', {'dados_medicos': dados_medicos, 'datas_abertas': datas_abertas})
+    
+    elif request.method == 'POST':
+        data = request.POST.get('data')
+        data_formatada = datetime.strptime(data, '%Y-%m-%dT%H:%M')
+        if data_formatada <= datetime.now():
+            messages.add_message(request, constants.WARNING, 'A data não pode ser anterior a data atual')
+            return redirect('/medicos/abrir_horario')
+        
+        horario_abrir = DatasAbertas(
+            data=data,
+            user=request.user
+            )
+        horario_abrir.save()
+        
+        messages.add_message(request, constants.SUCCESS, 'Horário cadastrado com sucesso')
+
+        return redirect('/medicos/abrir_horario')
+
+def consultas_medico(request):
+    if not is_medico(request.user):
+        messages.add_message(request, constants.WARNING, 'Somente médicos podem acessar essa página.')
+        return redirect('/usuarios/sair')
+    
+    hoje = datetime.now().date()
+    hoje = datetime.now().date()
+
+    consultas_hoje = consulta.objects.filter(data_aberta__user=request.user).filter(data_aberta__data__gte=hoje).filter(data_aberta__data__lt=hoje + timedelta(days=1))
+    consultas_restantes = consulta.objects.exclude(id__in=consultas_hoje.values('id'))
+    print(consultas_hoje.values('id'))
+    return render(request, 'consultas_medico.html', {'consultas_hoje':consultas_hoje, 'consultas_restantes':consultas_restantes})
